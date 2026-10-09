@@ -1,0 +1,186 @@
+<title>Webcam to VNC Flow</title>
+<style>
+/* Layout: one centered column; vertical card flow, then a sequence diagram below. */
+:root {
+  --bg: #fafafa;
+  --card: #f3f4f6;
+  --border: #e5e7eb;
+  --fg: #111827;
+  --muted: #6b7280;
+  --accent: #16a34a;
+  --accent-soft: #e8f6ed;
+  --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #131517; --card: #1c1f22; --border: #2c3035; --fg: #f3f4f6; --muted: #9ca3af;
+    --accent: #4ade80; --accent-soft: #17291e; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #131517; --card: #1c1f22; --border: #2c3035; --fg: #f3f4f6; --muted: #9ca3af;
+  --accent: #4ade80; --accent-soft: #17291e; color-scheme: dark;
+}
+body { background: var(--bg); color: var(--fg); font-family: var(--font); line-height: 1.5;
+  padding-inline: 16px; padding-block: 40px 64px; }
+main { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 56px; }
+h1 { font-size: 1.6rem; margin: 0 0 6px; text-wrap: balance; }
+h2 { font-size: 1.15rem; margin: 0 0 4px; }
+p.lead { color: var(--muted); margin: 0; max-width: 62ch; }
+section { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+
+/* flow cards */
+.flow { display: flex; flex-direction: column; align-items: center; gap: 0; }
+.card { width: min(100%, 420px); box-sizing: border-box; background: var(--card);
+  border: 1px solid var(--border); border-radius: 14px; padding: 14px 18px; text-align: center; }
+.card b { display: block; font-size: 0.95rem; }
+.card span { display: block; color: var(--muted); font-size: 0.82rem; margin-top: 2px; }
+.card.hl { border-color: var(--accent); background: var(--accent-soft); }
+.arrow { display: flex; flex-direction: column; align-items: center; color: var(--muted);
+  font-size: 0.78rem; padding: 6px 0; text-align: center; max-width: 340px; }
+.arrow::before { content: ""; width: 1px; height: 14px; background: var(--muted); }
+.arrow i { font-style: normal; padding: 4px 0; font-family: var(--mono); font-size: 0.74rem; }
+.arrow::after { content: ""; width: 7px; height: 7px; border-right: 1px solid var(--muted);
+  border-bottom: 1px solid var(--muted); transform: rotate(45deg); margin: -3px 0 4px; }
+.branches { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; width: 100%; }
+.branches .flow { min-width: 0; }
+.branches .card { width: 100%; }
+.branch-label { color: var(--muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; text-align: center; }
+@media (max-width: 640px) { .branches { grid-template-columns: 1fr; } }
+
+/* sequence diagram */
+.seq-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 12px; }
+.seq { display: block; min-width: 760px; width: 100%; height: auto; color: var(--muted); }
+.seq .box { fill: var(--bg); stroke: var(--border); }
+.seq .box.hl { fill: var(--accent-soft); stroke: var(--accent); }
+.seq .name { fill: var(--fg); font-size: 12px; font-weight: 600; font-family: var(--font); }
+.seq .sub { fill: var(--muted); font-size: 10px; font-family: var(--font); }
+.seq .life { stroke: var(--border); stroke-dasharray: 4 4; }
+.seq .msg { stroke: var(--muted); stroke-width: 1.2; fill: none; }
+.seq .msg.ret { stroke-dasharray: 5 3; }
+.seq .msg.acc { stroke: var(--accent); stroke-width: 1.8; }
+.seq .lbl { fill: var(--fg); font-size: 11.5px; font-family: var(--font); }
+.seq .num { fill: var(--muted); font-size: 11px; font-family: var(--mono); }
+.mk { color: var(--muted); }
+.mk-acc { color: var(--accent); }
+
+ol.steps { margin: 0; padding-left: 1.2em; display: flex; flex-direction: column; gap: 10px; max-width: 66ch; }
+ol.steps li::marker { color: var(--accent); font-weight: 600; }
+ol.steps b { font-weight: 600; }
+code { font-family: var(--mono); font-size: 0.85em; background: var(--card); border: 1px solid var(--border);
+  border-radius: 6px; padding: 1px 5px; }
+.note { border: 1px solid var(--border); background: var(--card); border-radius: 14px; padding: 14px 18px; color: var(--muted); font-size: 0.9rem; }
+.note b { color: var(--fg); }
+</style>
+
+<main>
+  <header>
+    <h1>Webcam to VNC</h1>
+    <p class="lead">Node B sends its camera to the server on node A. Anyone viewing the VNC desktop can then open it in <code>ffplay</code>.</p>
+  </header>
+
+  <section>
+    <div>
+      <h2>Flow of one video frame</h2>
+      <p class="lead">Top to bottom, from the camera on node B to the screen of every VNC viewer.</p>
+    </div>
+    <figure style="margin:0">
+      <div class="flow" role="img" aria-label="Video flows from the node B browser over WebRTC to auth-proxy, then over TCP to ffmpeg, into the virtual camera /dev/video0, and from there to ffplay in the VNC desktop and to a preview.">
+        <div class="card"><b>Node B browser</b><span>/webcam page · camera via getUserMedia</span></div>
+        <div class="arrow"><i>WebRTC video · UDP 50000–50009</i></div>
+        <div class="card"><b>auth-proxy (node A)</b><span>aiortc receives, decodes, scales to 640×480 yuv420p</span></div>
+        <div class="arrow"><i>raw frames · TCP :9000</i></div>
+        <div class="card"><b>kasmvnc · socat + ffmpeg</b><span>writes each frame into the virtual camera</span></div>
+        <div class="arrow"><i>v4l2 write</i></div>
+        <div class="card hl"><b>/dev/video0</b><span>v4l2loopback · exclusive_caps=0 · readable only while streaming</span></div>
+        <div class="arrow"><i>v4l2 read</i></div>
+
+        <div class="branches">
+          <div class="flow">
+            <div class="branch-label">Watch in the desktop</div>
+            <div class="card hl"><b>ffplay in VNC terminal</b><span>runs inside the bwrap sandbox</span></div>
+            <div class="arrow"><i>window</i></div>
+            <div class="card"><b>X display :1 → KasmVNC</b><span>screen encoded as updates</span></div>
+            <div class="arrow"><i>WebSocket via auth-proxy</i></div>
+            <div class="card"><b>Every VNC viewer</b><span>node A or node B browser</span></div>
+          </div>
+          <div class="flow">
+            <div class="branch-label">Preview on node B</div>
+            <div class="card"><b>ffmpeg MJPEG reader</b><span>re-reads the camera · socat :9001</span></div>
+            <div class="arrow"><i>GET /api/webcam/preview</i></div>
+            <div class="card"><b>"Received by server"</b><span>panel on the /webcam page</span></div>
+          </div>
+        </div>
+      </div>
+      <figcaption class="lead" style="margin-top:16px">Green marks the virtual camera and the process that shows it in the desktop.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <div>
+      <h2>Sequence of events</h2>
+      <p class="lead">Who talks to whom, in order. Dashed lines are replies.</p>
+    </div>
+    <figure style="margin:0">
+      <div class="seq-wrap">
+        <svg class="seq" viewBox="0 0 1020 500" role="img" aria-label="Sequence: node B posts an offer to auth-proxy and gets an answer, sends video over UDP, auth-proxy forwards raw frames to kasmvnc, ffmpeg writes to /dev/video0, ffplay reads from it and its window is shown to the VNC viewer.">
+          <defs>
+            <marker id="ah" class="mk" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker>
+            <marker id="ah2" class="mk-acc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker>
+          </defs>
+
+          <!-- participants: x centers 85, 255, 425, 595, 765, 935 -->
+          <g>
+            <rect class="box" x="15" y="12" width="140" height="48" rx="10"/><text class="name" x="85" y="33" text-anchor="middle">Node B browser</text><text class="sub" x="85" y="48" text-anchor="middle">/webcam page</text>
+            <rect class="box" x="185" y="12" width="140" height="48" rx="10"/><text class="name" x="255" y="33" text-anchor="middle">auth-proxy</text><text class="sub" x="255" y="48" text-anchor="middle">node A · aiortc</text>
+            <rect class="box" x="355" y="12" width="140" height="48" rx="10"/><text class="name" x="425" y="33" text-anchor="middle">kasmvnc</text><text class="sub" x="425" y="48" text-anchor="middle">socat + ffmpeg</text>
+            <rect class="box hl" x="525" y="12" width="140" height="48" rx="10"/><text class="name" x="595" y="33" text-anchor="middle">/dev/video0</text><text class="sub" x="595" y="48" text-anchor="middle">virtual camera</text>
+            <rect class="box hl" x="695" y="12" width="140" height="48" rx="10"/><text class="name" x="765" y="33" text-anchor="middle">ffplay</text><text class="sub" x="765" y="48" text-anchor="middle">VNC terminal</text>
+            <rect class="box" x="865" y="12" width="140" height="48" rx="10"/><text class="name" x="935" y="33" text-anchor="middle">VNC viewer</text><text class="sub" x="935" y="48" text-anchor="middle">any machine</text>
+          </g>
+          <g>
+            <line class="life" x1="85" y1="60" x2="85" y2="480"/><line class="life" x1="255" y1="60" x2="255" y2="480"/>
+            <line class="life" x1="425" y1="60" x2="425" y2="480"/><line class="life" x1="595" y1="60" x2="595" y2="480"/>
+            <line class="life" x1="765" y1="60" x2="765" y2="480"/><line class="life" x1="935" y1="60" x2="935" y2="480"/>
+          </g>
+
+          <!-- messages -->
+          <line class="msg" x1="85" y1="115" x2="255" y2="115" marker-end="url(#ah)"/>
+          <text class="num" x="97" y="108">1</text><text class="lbl" x="170" y="108" text-anchor="middle">POST /api/webcam/offer</text>
+
+          <line class="msg ret" x1="255" y1="165" x2="85" y2="165" marker-end="url(#ah)"/>
+          <text class="num" x="243" y="158" text-anchor="end">2</text><text class="lbl" x="170" y="158" text-anchor="middle">SDP answer</text>
+
+          <line class="msg acc" x1="85" y1="215" x2="255" y2="215" marker-end="url(#ah2)"/>
+          <text class="num" x="97" y="208">3</text><text class="lbl" x="170" y="208" text-anchor="middle">video · UDP</text>
+
+          <line class="msg" x1="255" y1="265" x2="425" y2="265" marker-end="url(#ah)"/>
+          <text class="num" x="267" y="258">4</text><text class="lbl" x="340" y="258" text-anchor="middle">raw frames · TCP :9000</text>
+
+          <line class="msg" x1="425" y1="315" x2="595" y2="315" marker-end="url(#ah)"/>
+          <text class="num" x="437" y="308">5</text><text class="lbl" x="510" y="308" text-anchor="middle">ffmpeg writes</text>
+
+          <line class="msg" x1="765" y1="365" x2="595" y2="365" marker-end="url(#ah)"/>
+          <text class="num" x="753" y="358" text-anchor="end">6</text><text class="lbl" x="680" y="358" text-anchor="middle">reads frames</text>
+
+          <line class="msg acc" x1="765" y1="415" x2="935" y2="415" marker-end="url(#ah2)"/>
+          <text class="num" x="777" y="408">7</text><text class="lbl" x="850" y="408" text-anchor="middle">desktop · WebSocket</text>
+        </svg>
+      </div>
+      <figcaption class="lead" style="margin-top:16px">Steps 1–2 are signalling over HTTPS. Step 3 skips the HTTPS port. Step 7 goes through KasmVNC and auth-proxy before it reaches the viewer.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>How it works</h2>
+    <ol class="steps">
+      <li><b>Sign in.</b> Node B logs in to auth-proxy and gets a session cookie that every webcam route checks.</li>
+      <li><b>Signal.</b> The page posts a WebRTC offer to <code>/api/webcam/offer</code>. auth-proxy closes any earlier sender, creates the receiver and answers with node A's real address, because the container's own address is not reachable from node B.</li>
+      <li><b>Stream.</b> The video goes straight to auth-proxy over UDP 50000–50009, not through the HTTPS port.</li>
+      <li><b>Write the camera.</b> Each frame is scaled to 640×480 and sent to the kasmvnc container, where ffmpeg writes it into <code>/dev/video0</code>.</li>
+      <li><b>Watch it.</b> <code>ffplay -f v4l2 /dev/video0</code> in a terminal inside the VNC desktop shows the camera. The session is shared, so every viewer sees the same window.</li>
+    </ol>
+    <div class="note"><b>Run ffplay inside the VNC desktop.</b> On node A's own host terminal it opens on node A's physical screen, not in VNC. The camera works only while node B's /webcam page is streaming, and only one sender is active at a time.</div>
+  </section>
+</main>

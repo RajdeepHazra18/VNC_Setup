@@ -1,0 +1,55 @@
+services:
+  kasmvnc:
+    build: .
+    container_name: ${CONTAINER_NAME:-kasmvnc}
+    # No published ports — only reachable from auth-proxy over the internal
+    # Docker network. auth-proxy is the sole externally facing entry point.
+    env_file:
+      - .env
+    # v4l2loopback virtual camera created on the host (see README/plan); the webcam
+    # ingest in start.sh writes here. Remove these two lines on hosts without it.
+    devices:
+      - /dev/video0:/dev/video0
+    group_add:
+      - video
+    # Required for workspace-agent-entrypoint.sh's `mount --bind` (project scoping).
+    cap_add:
+      - SYS_ADMIN
+    # Docker's default AppArmor profile denies mount(2) even with SYS_ADMIN, which makes
+    # the bind mount fail on Ubuntu hosts. seccomp/systempaths are needed for
+    # jailed-shell.sh's bubblewrap sandbox (user namespaces, pivot_root, fresh /proc).
+    security_opt:
+      - apparmor:unconfined
+      - seccomp=unconfined
+      - systempaths=unconfined
+    environment:
+      # These two are the per-session parameters a real orchestrator would inject at
+      # container-creation time — here they're just compose env vars for local iteration.
+      WORKSPACE_USER: ${WORKSPACE_USER:-rajdeep}
+      ACTIVE_PROJECT: ${ACTIVE_PROJECT:-project2}
+      # Local stand-in for a real NFS export (no NFS server on this dev machine) — see
+      # workspace-agent/lib/common.sh's mount_workspace() for the real `mount -t nfs` path.
+      NFS_EXPORT_SOURCE: /srv/nfs-fixture/${WORKSPACE_USER:-rajdeep}
+      EXPOSE_PATH: /home/dockeruser/workspace
+      EXPOSE_OWNER: dockeruser
+    volumes:
+      - ${DATA_DIR:-./data}:/home/dockeruser
+      # Local fixture standing in for the NFS export root (see NFS_EXPORT_SOURCE above).
+      - ./workspace-agent/fixture:/srv/nfs-fixture
+    restart: unless-stopped
+
+  auth-proxy:
+    build: ./auth-proxy
+    container_name: ${AUTH_PROXY_CONTAINER_NAME:-auth-proxy}
+    depends_on:
+      - kasmvnc
+    ports:
+      - "${BIND_ADDRESS:-0.0.0.0}:${KASM_PORT:-8445}:8444"
+      # WebRTC media (webcam) arrives over UDP on this range, not through the HTTPS
+      # port. Must match WEBCAM_ICE_PORT_MIN/MAX in auth-proxy/app/webcam.py (defaults).
+      - "${BIND_ADDRESS:-0.0.0.0}:50000-50009:50000-50009/udp"
+    env_file:
+      - .env
+    environment:
+      KASMVNC_URL: http://kasmvnc:8444
+    restart: unless-stopped
